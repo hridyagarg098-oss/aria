@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, Shield, Terminal } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Shield } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Button, Card } from '../../components/ui';
 import toast from 'react-hot-toast';
@@ -15,22 +15,7 @@ function withTimeout(promise, ms = 8000) {
   return Promise.race([promise, t]).finally(() => clearTimeout(timer));
 }
 
-const SQL_SCRIPT = `-- Run in Supabase SQL Editor → https://supabase.com/dashboard/project/arlxnjafyospxjbjkpey/sql/new
-do $$
-declare v_id uuid; v_uni uuid;
-begin
-  select id into v_uni from universities where slug='dds-university';
-  select id into v_id from auth.users where email='hridyagarg69@gmail.com';
-  if v_id is null then
-    insert into auth.users(id,instance_id,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,aud,role,created_at,updated_at)
-    values(gen_random_uuid(),'00000000-0000-0000-0000-000000000000','hridyagarg69@gmail.com',crypt('hridyaG78',gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{"full_name":"DDS Admin"}','authenticated','authenticated',now(),now())
-    returning id into v_id;
-  else
-    update auth.users set encrypted_password=crypt('hridyaG78',gen_salt('bf')),email_confirmed_at=now(),updated_at=now() where id=v_id;
-  end if;
-  insert into admins(id,university_id,name,email,role) values(v_id,v_uni,'DDS Admin','hridyagarg69@gmail.com','admin')
-  on conflict(id) do update set name='DDS Admin',university_id=v_uni;
-end $$;`;
+
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -38,7 +23,7 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [showSql, setShowSql] = useState(false);
+
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -51,11 +36,9 @@ export default function AdminLogin() {
 
       if (error) {
         if (/not.confirmed/i.test(error.message)) {
-          toast.error('Email not confirmed. Run the SQL script below.', { duration: 6000 });
-          setShowSql(true);
+          toast.error('Email not confirmed. Contact your administrator.', { duration: 6000 });
         } else if (/invalid.login|credentials/i.test(error.message)) {
-          toast.error('Wrong password. Run the SQL script if first time.');
-          setShowSql(true);
+          toast.error('Invalid email or password.');
         } else if (error.status === 429) {
           toast.error('Rate limited — wait 60s then try again.', { duration: 8000 });
         } else {
@@ -125,33 +108,7 @@ export default function AdminLogin() {
             </Button>
           </form>
 
-          {/* SQL Helper */}
-          <div className="mt-5 pt-4 border-t border-border">
-            <button onClick={() => setShowSql(v => !v)}
-              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-navy transition-colors">
-              <Terminal className="w-3.5 h-3.5" />
-              {showSql ? 'Hide' : 'First time / login error? Show setup SQL'}
-            </button>
 
-            {showSql && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 space-y-2">
-                <div className="bg-gray-900 rounded-lg p-3 max-h-40 overflow-y-auto">
-                  <pre className="text-xs text-green-400 font-mono whitespace-pre-wrap break-all">{SQL_SCRIPT}</pre>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { navigator.clipboard.writeText(SQL_SCRIPT); toast.success('SQL copied!'); }}
-                    className="flex-1 text-xs text-center bg-navy text-white rounded-btn py-2 hover:bg-navy/90 font-medium transition-colors">
-                    Copy SQL
-                  </button>
-                  <a href="https://supabase.com/dashboard/project/arlxnjafyospxjbjkpey/sql/new"
-                    target="_blank" rel="noopener noreferrer"
-                    className="flex-1 text-xs text-center border border-border rounded-btn py-2 hover:bg-gray-50 text-navy font-medium transition-colors">
-                    Open SQL Editor →
-                  </a>
-                </div>
-              </motion.div>
-            )}
-          </div>
         </Card>
 
         <p className="text-center text-xs text-gray-400 mt-6">

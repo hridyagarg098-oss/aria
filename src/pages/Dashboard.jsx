@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Button, Card, Badge, Skeleton, ProgressBar, STATUS_LABELS } from '../components/ui';
+import TopNav from '../components/layout/TopNav';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -115,7 +116,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-bg">
-        <DashboardNav name={studentProfile?.name} onSignOut={() => navigate('/')} />
+        <TopNav subtitle="Admissions Portal" showUserMenu name={studentProfile?.name} />
         <div className="max-w-3xl mx-auto px-4 py-10 space-y-4">
           <Skeleton className="h-20" />
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-40" />)}
@@ -127,7 +128,7 @@ export default function Dashboard() {
   if (!application) {
     return (
       <div className="min-h-screen bg-bg">
-        <DashboardNav name={studentProfile?.name} onSignOut={() => navigate('/')} />
+        <TopNav subtitle="Admissions Portal" showUserMenu name={studentProfile?.name} />
         <div className="max-w-3xl mx-auto px-4 py-10">
           <div className="text-center py-20">
             <div className="w-16 h-16 bg-navy/5 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -181,7 +182,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <DashboardNav name={name} onSignOut={() => navigate('/')} />
+      <TopNav subtitle="Admissions Portal" showUserMenu name={name} />
 
       <div className="max-w-3xl mx-auto px-4 py-10">
         {/* Header */}
@@ -529,19 +530,3 @@ export default function Dashboard() {
   );
 }
 
-function DashboardNav({ name, onSignOut }) {
-  const { signOut } = useAuth();
-  return (
-    <nav className="bg-white border-b border-border px-6 py-4 flex items-center justify-between">
-      <div>
-        <span className="font-bold text-navy">DDS University</span>
-        <span className="text-gray-300 mx-2">·</span>
-        <span className="text-sm text-gray-500">Admissions Portal</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-gray-500">{name}</span>
-        <Button variant="outline" size="sm" onClick={() => { signOut(); onSignOut(); }}>Sign Out</Button>
-      </div>
-    </nav>
-  );
-}
