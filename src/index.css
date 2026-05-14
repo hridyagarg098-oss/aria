@@ -49,6 +49,10 @@ body {
   0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
   40% { transform: translateY(-6px); opacity: 1; }
 }
+@keyframes bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-6px); }
+}
 
 /* ── Chat bubbles ─────────────────────────────────── */
 .chat-scroll::-webkit-scrollbar { width: 4px; }
@@ -81,4 +85,149 @@ input:focus, textarea:focus, select:focus {
 .no-select {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* ── Skeleton pulse ────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ════════════════════════════════════════════════════
+   RESPONSIVE DESIGN SYSTEM
+   ════════════════════════════════════════════════════ */
+
+/* ── Global responsive utilities ───────────────────── */
+body { overflow-x: hidden; }
+img { max-width: 100%; height: auto; }
+html { scroll-behavior: smooth; }
+p, span, h1, h2, h3, h4 { overflow-wrap: break-word; word-wrap: break-word; }
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Touch-friendly tap targets */
+button, a, select { min-height: 44px; }
+
+/* iOS viewport fix */
+@supports (-webkit-touch-callout: none) {
+  .min-h-screen { min-height: -webkit-fill-available; }
+}
+
+/* iOS input zoom prevention */
+@media (max-width: 768px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* ── Responsive Navigation ─────────────────────────── */
+@media (max-width: 768px) {
+  .desktop-nav { display: none !important; }
+  .mobile-menu-btn { display: flex !important; }
+}
+@media (min-width: 769px) {
+  .desktop-nav { display: flex !important; }
+  .mobile-menu-btn { display: none !important; }
+}
+
+/* ── Responsive Landing Page ───────────────────────── */
+@media (max-width: 768px) {
+  /* Hero */
+  .hero-container,
+  section.grid.lg\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+    padding-top: 80px !important;
+    padding-bottom: 48px !important;
+    text-align: center;
+  }
+  .text-hero { font-size: 28px !important; line-height: 1.15 !important; }
+  .hero-pipeline-card { display: none !important; }
+  /* Stats bar */
+  .stats-bar { flex-direction: column !important; gap: 24px !important; padding: 32px 16px !important; }
+  .stats-divider { display: none !important; }
+}
+
+@media (max-width: 1024px) {
+  /* How it works grid */
+  .how-it-works-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 600px) {
+  .how-it-works-grid { grid-template-columns: 1fr !important; }
+}
+
+/* For colleges section */
+@media (max-width: 768px) {
+  .colleges-metrics-row { flex-direction: column !important; gap: 0 !important; }
+  .colleges-metrics-divider { display: none !important; }
+  .colleges-benefits-grid { grid-template-columns: 1fr !important; }
+  .colleges-cta-strip { flex-direction: column !important; text-align: center !important; gap: 24px !important; }
+}
+
+/* ── Responsive Application Form ───────────────────── */
+@media (max-width: 640px) {
+  .form-container {
+    padding: 16px !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    min-height: 100vh;
+  }
+  .form-card { padding: 20px 16px !important; border-radius: 12px !important; }
+  .city-state-grid { grid-template-columns: 1fr !important; }
+  .score-fields-row { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .progress-steps span { display: none; }
+}
+
+/* ── Responsive Student Dashboard ──────────────────── */
+@media (max-width: 640px) {
+  .dashboard-container { padding: 80px 12px 24px !important; }
+  .stage-card { padding: 16px !important; }
+  .stage-card-header { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; }
+  .subject-pills-row { flex-wrap: wrap !important; gap: 6px !important; }
+  .subject-pill { font-size: 11px !important; padding: 4px 8px !important; }
+}
+
+/* ── Responsive Aptitude Test ──────────────────────── */
+@media (max-width: 1024px) {
+  .test-right-sidebar {
+    position: fixed !important;
+    bottom: 0 !important; left: 0 !important; right: 0 !important;
+    top: auto !important; height: auto !important;
+    max-height: 60vh !important; overflow-y: auto !important;
+    border-top: 2px solid #e5e7eb !important;
+    border-radius: 16px 16px 0 0 !important;
+    transform: translateY(100%) !important;
+    transition: transform 0.3s ease !important;
+    z-index: 100 !important;
+  }
+  .test-right-sidebar.open { transform: translateY(0) !important; }
+  .test-main-area { width: 100% !important; padding-bottom: 80px !important; }
+  .palette-toggle-btn {
+    display: flex !important;
+    position: fixed !important;
+    bottom: 0 !important; left: 0 !important; right: 0 !important;
+    background: #1e3a5f !important; color: white !important;
+    border: none !important; padding: 14px !important;
+    font-size: 14px !important; font-weight: 600 !important;
+    justify-content: center !important; align-items: center !important;
+    gap: 8px !important; cursor: pointer !important; z-index: 99 !important;
+  }
+}
+@media (max-width: 360px) {
+  .test-question-text { font-size: 14px !important; }
+  .test-option { padding: 10px 12px !important; }
+}
+
+/* ── Responsive Admin Dashboard ────────────────────── */
+@media (max-width: 768px) {
+  .admin-layout { flex-direction: column !important; }
+  .admin-sidebar {
+    width: 100% !important; height: auto !important;
+    flex-direction: row !important; overflow-x: auto !important;
+    padding: 8px !important;
+    border-right: none !important; border-bottom: 1px solid #e5e7eb !important;
+  }
+  .admin-sidebar-link { white-space: nowrap !important; padding: 8px 12px !important; font-size: 13px !important; }
+  .admin-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .admin-table { display: block !important; overflow-x: auto !important; white-space: nowrap !important; }
+  .admin-main { padding: 16px !important; }
+}
+@media (max-width: 480px) {
+  .admin-stats-grid { grid-template-columns: 1fr !important; }
 }

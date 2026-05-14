@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute, AdminRoute } from './components/layout/ProtectedRoute';
+import TestErrorBoundary from './components/TestErrorBoundary';
 
 // Lazy-load pages
 const Landing = lazy(() => import('./pages/Landing'));
@@ -11,6 +12,8 @@ const Apply = lazy(() => import('./pages/Apply'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const AptitudeTest = lazy(() => import('./pages/AptitudeTest'));
 const Interview = lazy(() => import('./pages/Interview'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Privacy = lazy(() => import('./pages/Privacy'));
 
 // Admin
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
@@ -51,12 +54,14 @@ export default function App() {
             {/* Public */}
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/privacy" element={<Privacy />} />
 
             {/* Student (protected) */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/apply" element={<ProtectedRoute><Apply /></ProtectedRoute>} />
-            <Route path="/test" element={<ProtectedRoute><AptitudeTest /></ProtectedRoute>} />
+            <Route path="/test" element={<ProtectedRoute><TestErrorBoundary><AptitudeTest /></TestErrorBoundary></ProtectedRoute>} />
             <Route path="/interview" element={<ProtectedRoute><Interview /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
             {/* Admin public */}
             <Route path="/admin" element={<AdminLogin />} />

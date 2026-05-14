@@ -25,6 +25,7 @@ export default function ApplicantDetail() {
   const [app, setApp] = useState(null);
   const [testSession, setTestSession] = useState(null);
   const [interviewSession, setInterviewSession] = useState(null);
+  const [interviewSessions, setInterviewSessions] = useState([]);
   const [testQuestions, setTestQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
@@ -64,6 +65,14 @@ export default function ApplicantDetail() {
       .single();
     setInterviewSession(is_ || null);
 
+    // Fetch ALL interview sessions for the results tab
+    const { data: allSessions } = await supabase
+      .from('interview_sessions')
+      .select('*')
+      .eq('application_id', id)
+      .order('started_at', { ascending: true });
+    setInterviewSessions(allSessions || []);
+
     const { data: test } = await supabase
       .from('aptitude_tests')
       .select('questions')
@@ -87,6 +96,16 @@ export default function ApplicantDetail() {
     setNoteOpen(false);
   };
 
+  const handleAdminDecision = async (applicationId, decision) => {
+    const { error } = await supabase.from('applications').update({ status: decision }).eq('id', applicationId);
+    if (!error) {
+      toast.success(`Applicant marked as: ${decision.replace(/_/g, ' ')}`);
+      fetchData();
+    } else {
+      toast.error('Failed to update status');
+    }
+  };
+
   const downloadPDF = async () => {
     if (!reportRef.current) return;
     toast('Generating PDF...', { icon: '📄' });
@@ -96,7 +115,7 @@ export default function ApplicantDetail() {
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
     pdf.addImage(img, 'PNG', 0, 0, pdfWidth, Math.min(pdfHeight, 297));
-    pdf.save(`aria-${app.students?.name?.replace(/\s+/g, '-')}-report.pdf`);
+    pdf.save(`aria-${(app.students?.name || app.form_data?.name || 'applicant').replace(/\s+/g, '-')}-report.pdf`);
     toast.success('PDF downloaded!');
   };
 
@@ -117,6 +136,8 @@ export default function ApplicantDetail() {
   if (!app) return null;
 
   const fd = app.form_data || {};
+  const studentName = app.students?.name || fd.name || 'Unknown';
+  const studentCity = app.students?.city || fd.city || '';
   const pcmAvg = fd.physics && fd.chemistry && fd.maths
     ? ((+fd.physics + +fd.chemistry + +fd.maths) / 3).toFixed(1) : null;
 
@@ -144,7 +165,7 @@ export default function ApplicantDetail() {
           <ArrowLeft className="w-4 h-4" /> All Applicants
         </Link>
         <span className="text-gray-300">/</span>
-        <span className="text-navy font-medium">{app.students?.name}</span>
+        <span className="text-navy font-medium">{studentName}</span>
       </div>
 
       <div ref={reportRef} className="grid lg:grid-cols-3 gap-6">
@@ -153,12 +174,12 @@ export default function ApplicantDetail() {
           <Card>
             <div className="flex flex-col items-center text-center mb-4">
               <div className="w-16 h-16 bg-navy rounded-full flex items-center justify-center text-white text-2xl font-bold mb-3">
-                {app.students?.name?.charAt(0) || 'S'}
+                {studentName.charAt(0) || 'S'}
               </div>
-              <h2 className="text-card-title font-semibold text-navy">{app.students?.name}</h2>
-              <p className="text-xs text-gray-500 mt-0.5">{app.students?.email}</p>
+              <h2 className="text-card-title font-semibold text-navy">{studentName}</h2>
+              <p className="text-xs text-gray-500 mt-0.5">{app.students?.email || ''}</p>
               {app.students?.phone && <p className="text-xs text-gray-500">{app.students?.phone}</p>}
-              <p className="text-xs text-gray-500 mt-1">{app.students?.city}</p>
+              <p className="text-xs text-gray-500 mt-1">{studentCity}</p>
             </div>
             <div className="space-y-2 text-xs text-gray-600">
               <div className="flex justify-between items-center">
@@ -372,124 +393,216 @@ export default function ApplicantDetail() {
                 </div>
               )}
 
-              {/* Interview */}
+              {/* Interview Results */}
               {activeTab === 2 && (
-                <div className="space-y-5">
-                  {!interviewSession ? (
-                    <p className="text-sm text-gray-400 text-center py-8">Interview not yet completed</p>
+                <div>
+                  {!interviewSessions || interviewSessions.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '48px', color: '#9ca3af' }}>
+                      <p style={{ fontSize: '32px', marginBottom: '12px' }}>🎙</p>
+                      <p style={{ fontSize: '15px', color: '#374151' }}>No interview completed yet</p>
+                    </div>
                   ) : (
-                    <>
-                      {/* Score header with grade & recommendation */}
-                      <div className="flex items-center gap-6">
-                        <div>
-                          <p className="text-5xl font-bold text-navy">{interviewSession.final_score ? Math.round(interviewSession.final_score) : '—'}</p>
-                          <p className="text-xs text-gray-400">/ 100</p>
-                        </div>
-                        <div className="space-y-1">
-                          {interviewSession.interview_grade && (
-                            <Badge variant={GRADE_BADGE[interviewSession.interview_grade] || 'default'} className="text-sm">
-                              Grade: {interviewSession.interview_grade}
-                            </Badge>
-                          )}
-                          {interviewSession.recommendation && (
-                            <Badge variant={
-                              interviewSession.recommendation === 'Strong Admit' ? 'success' :
-                              interviewSession.recommendation === 'Admit' ? 'info' :
-                              interviewSession.recommendation === 'Waitlist' ? 'warning' : 'error'
-                            } className="text-sm">
-                              {interviewSession.recommendation}
-                            </Badge>
-                          )}
-                          {interviewSession.admit_confidence != null && (
-                            <p className="text-xs text-gray-500">Confidence: {Math.round(interviewSession.admit_confidence)}%</p>
-                          )}
-                        </div>
-                      </div>
+                    <div>
+                      {interviewSessions.map((session, attemptIndex) => {
+                        let scoreData = null;
+                        try { scoreData = session.final_assessment ? JSON.parse(session.final_assessment) : null; } catch (e) {}
 
-                      {/* Assessment summary */}
-                      {interviewSession.final_assessment && (
-                        <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">{interviewSession.final_assessment}</p>
-                      )}
+                        return (
+                          <div key={session.id} style={{ marginBottom: '32px' }}>
 
-                      {/* 5-dimension scoring */}
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Evaluation Dimensions</p>
-                        <div className="grid grid-cols-1 gap-2">
-                          {[
-                            { label: 'Project Depth (30%)', value: interviewSession.project_depth_score || interviewSession.depth_score, color: '#4f46e5' },
-                            { label: 'Academic Understanding (20%)', value: interviewSession.academic_understanding_score, color: '#0891b2' },
-                            { label: 'Communication (15%)', value: interviewSession.communication_score, color: '#059669' },
-                            { label: 'Motivation Clarity (15%)', value: interviewSession.motivation_clarity_score || interviewSession.enthusiasm_score, color: '#d97706' },
-                            { label: 'Problem Solving (20%)', value: interviewSession.problem_solving_score, color: '#dc2626' },
-                          ].map(({ label, value, color }) => (
-                            <div key={label} className="bg-gray-50 rounded-lg p-3">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-xs text-gray-600 font-medium">{label}</p>
-                                <p className="text-xs font-bold" style={{ color }}>{value ? Math.round(value) : '—'}</p>
+                            {/* Attempt header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                              <span style={{ backgroundColor: '#1e3a5f', color: 'white', padding: '4px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 600 }}>
+                                Attempt {attemptIndex + 1}
+                              </span>
+                              {session.force_terminated && (
+                                <span style={{ backgroundColor: '#fee2e2', color: '#dc2626', padding: '4px 12px', borderRadius: '100px', fontSize: '12px', fontWeight: 600 }}>Terminated</span>
+                              )}
+                              <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                                {session.started_at ? new Date(session.started_at).toLocaleString() : ''}
+                              </span>
+                            </div>
+
+                            {/* Score overview */}
+                            {scoreData && (
+                              <div style={{ marginBottom: '20px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+                                  {/* Total score */}
+                                  <div style={{ backgroundColor: '#1e3a5f', color: 'white', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '40px', fontWeight: 700, color: '#f5c842' }}>{scoreData.total_score}</div>
+                                    <div style={{ fontSize: '12px', opacity: 0.8 }}>Total Score / 100</div>
+                                    <div style={{ marginTop: '8px', backgroundColor: scoreData.total_score >= 75 ? '#16a34a' : scoreData.total_score >= 55 ? '#d97706' : '#dc2626', borderRadius: '100px', padding: '3px 10px', fontSize: '12px', fontWeight: 600, display: 'inline-block' }}>
+                                      {scoreData.grade}
+                                    </div>
+                                  </div>
+                                  {/* Recommendation */}
+                                  <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>Recommendation</div>
+                                    <div style={{ fontWeight: 600, fontSize: '15px', color: scoreData.recommendation === 'Strongly Recommend' ? '#16a34a' : scoreData.recommendation === 'Recommend' ? '#2563eb' : scoreData.recommendation === 'Borderline' ? '#d97706' : '#dc2626' }}>
+                                      {scoreData.recommendation}
+                                    </div>
+                                  </div>
+                                  {/* Confidence */}
+                                  <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>Admit Confidence</div>
+                                    <div style={{ fontSize: '32px', fontWeight: 700, color: '#1e3a5f' }}>{scoreData.admit_confidence}%</div>
+                                  </div>
+                                </div>
+
+                                {/* Sub-scores — supports both old (subscores) and new (dimension_scores) format */}
+                                <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px', marginBottom: '16px' }}>
+                                  <p style={{ fontWeight: 600, fontSize: '14px', marginBottom: '16px', color: '#111827' }}>Score Breakdown — 8 Dimensions</p>
+                                  {Object.entries(scoreData.dimension_scores || scoreData.subscores || {}).map(([key, val]) => (
+                                    <div key={key} style={{ marginBottom: '16px' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: 500, color: '#374151', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          {val.verdict && (
+                                            <span style={{
+                                              fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '100px',
+                                              backgroundColor: val.verdict === 'Strong' ? '#dcfce7' : val.verdict === 'Adequate' ? '#fef9c3' : '#fee2e2',
+                                              color: val.verdict === 'Strong' ? '#15803d' : val.verdict === 'Adequate' ? '#a16207' : '#dc2626',
+                                            }}>{val.verdict}</span>
+                                          )}
+                                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e3a5f' }}>{val.score}/{val.max}</span>
+                                        </div>
+                                      </div>
+                                      <div style={{ height: '8px', backgroundColor: '#f3f4f6', borderRadius: '100px', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${(val.score / val.max) * 100}%`, backgroundColor: (val.score / val.max) >= 0.7 ? '#16a34a' : (val.score / val.max) >= 0.5 ? '#d97706' : '#dc2626', borderRadius: '100px', transition: 'width 0.6s ease' }} />
+                                      </div>
+                                      {(val.evidence || val.comment) && <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px', fontStyle: 'italic' }}>"{val.evidence || val.comment}"</p>}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Best & Worst Moments */}
+                                {(scoreData.best_moment || scoreData.worst_moment) && (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                    {scoreData.best_moment && (
+                                      <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px' }}>
+                                        <p style={{ fontWeight: 600, fontSize: '13px', color: '#15803d', marginBottom: '8px' }}>🌟 Best Moment</p>
+                                        <p style={{ fontSize: '13px', color: '#166534', fontStyle: 'italic', lineHeight: 1.6 }}>"{scoreData.best_moment}"</p>
+                                      </div>
+                                    )}
+                                    {scoreData.worst_moment && (
+                                      <div style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '12px', padding: '16px' }}>
+                                        <p style={{ fontWeight: 600, fontSize: '13px', color: '#9a3412', marginBottom: '8px' }}>⚠ Weakest Moment</p>
+                                        <p style={{ fontSize: '13px', color: '#9a3412', fontStyle: 'italic', lineHeight: 1.6 }}>"{scoreData.worst_moment}"</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Project Viability + Genuineness */}
+                                {(scoreData.project_viability || scoreData.genuineness_score != null) && (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                    {scoreData.project_viability && (
+                                      <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px' }}>
+                                        <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>Project Viability</p>
+                                        <p style={{ fontWeight: 600, fontSize: '15px', color: scoreData.project_viability === 'High Potential' ? '#16a34a' : scoreData.project_viability === 'Moderate Potential' ? '#d97706' : '#dc2626' }}>
+                                          {scoreData.project_viability}
+                                        </p>
+                                        {scoreData.project_viability_reason && <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>{scoreData.project_viability_reason}</p>}
+                                      </div>
+                                    )}
+                                    {scoreData.genuineness_score != null && (
+                                      <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px' }}>
+                                        <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>Genuineness Score</p>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                          <span style={{ fontSize: '28px', fontWeight: 700, color: scoreData.genuineness_score >= 70 ? '#16a34a' : scoreData.genuineness_score >= 50 ? '#d97706' : '#dc2626' }}>{scoreData.genuineness_score}</span>
+                                          <span style={{ fontSize: '12px', color: '#9ca3af' }}>/100</span>
+                                        </div>
+                                        {scoreData.scripted_answers_detected && (
+                                          <span style={{ marginTop: '6px', display: 'inline-block', backgroundColor: '#fee2e2', color: '#dc2626', fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '100px' }}>Scripted Answers Detected</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Strengths and flags */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                  <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px' }}>
+                                    <p style={{ fontWeight: 600, fontSize: '13px', color: '#15803d', marginBottom: '10px' }}>✅ Green Flags</p>
+                                    {(scoreData.green_flags || scoreData.key_strengths || []).map((s, i) => (<p key={i} style={{ fontSize: '13px', color: '#166534', marginBottom: '6px' }}>• {s}</p>))}
+                                    {(!(scoreData.green_flags || scoreData.key_strengths) || (scoreData.green_flags || scoreData.key_strengths).length === 0) && <p style={{ fontSize: '13px', color: '#9ca3af' }}>None identified</p>}
+                                  </div>
+                                  <div style={{ backgroundColor: scoreData.red_flags?.length > 0 ? '#fef2f2' : '#f9fafb', border: `1px solid ${scoreData.red_flags?.length > 0 ? '#fecaca' : '#e5e7eb'}`, borderRadius: '12px', padding: '16px' }}>
+                                    <p style={{ fontWeight: 600, fontSize: '13px', color: scoreData.red_flags?.length > 0 ? '#dc2626' : '#9ca3af', marginBottom: '10px' }}>🚩 Red Flags</p>
+                                    {scoreData.red_flags?.length > 0
+                                      ? scoreData.red_flags.map((f, i) => (<p key={i} style={{ fontSize: '13px', color: '#991b1b', marginBottom: '6px' }}>• {f}</p>))
+                                      : <p style={{ fontSize: '13px', color: '#9ca3af' }}>None identified</p>}
+                                  </div>
+                                </div>
+
+                                {/* Committee Summary + Final Verdict */}
+                                {(scoreData.committee_summary || scoreData.summary) && (
+                                  <div style={{ backgroundColor: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+                                    <p style={{ fontWeight: 600, fontSize: '13px', color: '#374151', marginBottom: '8px' }}>Committee Summary</p>
+                                    <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: 1.7 }}>{scoreData.committee_summary || scoreData.summary}</p>
+                                    {scoreData.final_verdict && (
+                                      <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                                        <p style={{ fontWeight: 600, fontSize: '13px', color: '#1e3a5f' }}>Final Verdict</p>
+                                        <p style={{ fontSize: '14px', color: '#374151', fontWeight: 500, marginTop: '4px' }}>{scoreData.final_verdict}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                                <div className="h-full rounded-full transition-all" style={{ width: `${value || 0}%`, background: color }} />
+                            )}
+
+                            {/* Full transcript */}
+                            <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden' }}>
+                              <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
+                                <p style={{ fontWeight: 600, fontSize: '14px', color: '#111827' }}>Full Interview Transcript</p>
+                              </div>
+                              <div style={{ padding: '20px', maxHeight: '400px', overflowY: 'auto' }}>
+                                {(session.messages || []).map((msg, i) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: '12px' }}>
+                                    <div style={{ maxWidth: '75%', backgroundColor: msg.role === 'user' ? '#eef2ff' : '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', lineHeight: 1.6, color: '#374151' }}>
+                                      <span style={{ fontSize: '10px', color: '#9ca3af', display: 'block', marginBottom: '4px', fontWeight: 600, textTransform: 'uppercase' }}>
+                                        {msg.role === 'user' ? 'Candidate' : 'Dr. Mehta'}
+                                      </span>
+                                      {msg.content}
+                                    </div>
+                                  </div>
+                                ))}
+                                {(!session.messages || session.messages.length === 0) && (
+                                  <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: '13px', padding: '20px' }}>No transcript available</p>
+                                )}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
 
-                      {/* Strengths & Red Flags */}
-                      <div className="grid grid-cols-2 gap-3">
-                        {interviewSession.key_strengths?.length > 0 && (
-                          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-green-800 mb-2">Key Strengths</p>
-                            <ul className="space-y-1">
-                              {interviewSession.key_strengths.map((s, i) => (
-                                <li key={i} className="text-xs text-green-700 flex items-start gap-1.5">
-                                  <CheckCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />{s}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {interviewSession.red_flags?.length > 0 && (
-                          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-red-800 mb-2">Red Flags</p>
-                            <ul className="space-y-1">
-                              {interviewSession.red_flags.map((f, i) => (
-                                <li key={i} className="text-xs text-red-700 flex items-start gap-1.5">
-                                  <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />{f}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Attempt info */}
-                      <div className="flex gap-2">
-                        <Badge variant="default">Attempt {interviewSession.attempt_number || 1}/2</Badge>
-                        <Badge variant="default">
-                          {interviewSession.question_count || '?'} questions
-                        </Badge>
-                      </div>
-
-                      {/* Transcript */}
-                      {interviewSession.messages?.length > 0 && (
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Interview Transcript</p>
-                          <div className="space-y-3 max-h-80 overflow-y-auto chat-scroll">
-                            {interviewSession.messages.map((msg, i) => (
-                              <div key={i} className={`flex ${msg.role === 'student' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-sm rounded-card px-3 py-2 text-xs ${msg.role === 'aria' ? 'bg-gray-50 border border-border text-gray-700' : 'bg-navy text-white'}`}>
-                                  <p className={`text-xs font-semibold mb-1 ${msg.role === 'aria' ? 'text-navy' : 'text-blue-200'}`}>
-                                    {msg.role === 'aria' ? 'Aria' : 'Student'}
-                                  </p>
-                                  {msg.content}
-                                </div>
+                            {/* Integrity log */}
+                            {session.integrity_log?.length > 0 && (
+                              <div style={{ marginTop: '16px', backgroundColor: '#fef9f0', border: '1px solid #fed7aa', borderRadius: '12px', padding: '16px' }}>
+                                <p style={{ fontWeight: 600, fontSize: '13px', color: '#92400e', marginBottom: '12px' }}>⚠ Integrity Events ({session.integrity_log.length})</p>
+                                {session.integrity_log.map((log, i) => (
+                                  <div key={i} style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'flex-start' }}>
+                                    <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace', flexShrink: 0, marginTop: '1px' }}>
+                                      {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '—'}
+                                    </span>
+                                    <span style={{ backgroundColor: '#fed7aa', color: '#92400e', fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '100px', flexShrink: 0 }}>
+                                      {log.type?.replace(/_/g, ' ')}
+                                    </span>
+                                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{log.reason}</span>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            )}
+
+                            {/* Admin action buttons */}
+                            <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+                              <button onClick={() => handleAdminDecision(id, 'selected')} style={{ flex: 1, backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>✅ Select Applicant</button>
+                              <button onClick={() => handleAdminDecision(id, 'rejected_final')} style={{ flex: 1, backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>✗ Reject Applicant</button>
+                              <button onClick={() => handleAdminDecision(id, 'on_hold')} style={{ flex: 1, backgroundColor: '#f8f9fa', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '12px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>⏸ Hold for Review</button>
+                            </div>
+
+                            {attemptIndex < interviewSessions.length - 1 && <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '32px 0' }} />}
                           </div>
-                        </div>
-                      )}
-                    </>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               )}
@@ -497,39 +610,75 @@ export default function ApplicantDetail() {
               {/* Integrity Log */}
               {activeTab === 3 && (
                 <div className="space-y-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Proctoring & Integrity Events</p>
+                  {/* Summary metric cards */}
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: 'Face Warnings', value: testSession?.face_warning_count ?? 0, color: '#d97706' },
+                      { label: 'Tab Switches', value: testSession?.tab_switches ?? 0, color: '#2563eb' },
+                      { label: 'Audio Violations', value: (testSession?.integrity_log||[]).filter(e=>e.type?.includes('audio')).length, color: '#7c3aed' },
+                      { label: 'Terminated', value: testSession?.force_terminated ? 'Yes' : 'No', color: testSession?.force_terminated ? '#dc2626' : '#16a34a' },
+                    ].map(m => (
+                      <div key={m.label} className="bg-gray-50 rounded-lg p-3 text-center">
+                        <p className="text-xl font-bold" style={{color:m.color}}>{m.value}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{m.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Risk assessment */}
+                  {(() => {
+                    const v = testSession?.integrity_log?.length ?? 0;
+                    const ft = testSession?.force_terminated;
+                    const [icon,label,rec,style] = ft||v>=5
+                      ? ['🔴','High Risk','Manual review required','background:#fef2f2;border:1px solid #fecaca;color:#991b1b']
+                      : v>=3 ? ['🟠','Medium Risk','Review recommended','background:#fff7ed;border:1px solid #fed7aa;color:#9a3412']
+                      : v>=1 ? ['🟡','Low Risk','Minor violations logged','background:#fffbeb;border:1px solid #fde68a;color:#92400e']
+                      : ['🟢','Clean Session','No violations','background:#f0fdf4;border:1px solid #bbf7d0;color:#166534'];
+                    return (
+                      <div className="rounded-lg p-3 flex items-center gap-3" style={{...Object.fromEntries(style.split(';').map(s=>s.split(':')))}}>
+                        <span className="text-2xl">{icon}</span>
+                        <div><p className="font-semibold text-sm">{label}</p><p className="text-xs mt-0.5 opacity-80">{rec}</p></div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Violation timeline */}
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Violation Timeline</p>
                   {testSession?.integrity_log?.length > 0 ? (
-                    <div className="border border-border rounded-lg overflow-hidden">
-                      <table className="w-full text-xs">
-                        <thead className="bg-gray-50 border-b border-border">
-                          <tr>
-                            <th className="text-left px-3 py-2 text-gray-500">#</th>
-                            <th className="text-left px-3 py-2 text-gray-500">Type</th>
-                            <th className="text-left px-3 py-2 text-gray-500">Detail</th>
-                            <th className="text-left px-3 py-2 text-gray-500">Time</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {testSession.integrity_log.map((entry, i) => (
-                            <tr key={i} className="border-b border-border last:border-0">
-                              <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                              <td className="px-3 py-2">
-                                <Badge variant={
-                                  ['multiple_faces', 'tab_switch'].includes(entry.type) ? 'error' :
-                                  ['no_face', 'looking_away', 'loud_audio'].includes(entry.type) ? 'warning' : 'default'
-                                }>{entry.type}</Badge>
-                              </td>
-                              <td className="px-3 py-2 text-gray-600">{entry.detail}</td>
-                              <td className="px-3 py-2 text-gray-400">{entry.ts ? new Date(entry.ts).toLocaleTimeString() : '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="border border-border rounded-lg overflow-hidden divide-y divide-gray-100">
+                      {testSession.integrity_log.map((entry, i) => {
+                        const ts = entry.timestamp || (entry.ts ? new Date(entry.ts).toISOString() : null);
+                        const typeColor = entry.type?.includes('face')||entry.type==='gaze_deviation'||entry.type==='gaze_down'
+                          ? 'background:#fef3c7;color:#92400e'
+                          : entry.type?.includes('audio')||entry.type==='speaking_detected'
+                          ? 'background:#eff6ff;color:#1e40af'
+                          : entry.type==='test_terminated'
+                          ? 'background:#fef2f2;color:#991b1b'
+                          : entry.type==='tab_switch'
+                          ? 'background:#f5f3ff;color:#5b21b6'
+                          : 'background:#f9fafb;color:#374151';
+                        return (
+                          <div key={i} className="flex gap-3 px-4 py-3 items-start">
+                            <span className="text-xs text-gray-400 w-20 flex-shrink-0 font-mono mt-0.5">
+                              {ts ? new Date(ts).toLocaleTimeString() : '—'}
+                            </span>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                              style={{...Object.fromEntries(typeColor.split(';').map(s=>s.split(':')))}}>
+                              {entry.type?.replace(/_/g,' ')}
+                            </span>
+                            <span className="text-xs text-gray-600 leading-relaxed flex-1">{entry.detail||entry.reason||'—'}</span>
+                            {entry.warning_number && (
+                              <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full flex-shrink-0 ml-auto">
+                                Warning {entry.warning_number}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm text-gray-400 text-center py-8">No integrity violations recorded</p>
                   )}
-                  {/* Session hash */}
                   {testSession?.session_hash && (
                     <div className="bg-gray-50 rounded-lg p-3">
                       <p className="text-xs text-gray-500">Session Hash: <code className="font-mono text-navy">{testSession.session_hash}</code></p>
@@ -537,6 +686,7 @@ export default function ApplicantDetail() {
                   )}
                 </div>
               )}
+
 
 
               {/* Raw Data */}
@@ -596,13 +746,13 @@ export default function ApplicantDetail() {
       {/* Sticky action bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border px-6 py-3 flex items-center gap-3 z-30">
         <div className="flex-1 text-sm text-gray-500">
-          <span className="font-medium text-navy">{app.students?.name}</span>
+          <span className="font-medium text-navy">{studentName}</span>
           {app.admin_notes && <span className="ml-2 text-xs italic text-gray-400">Has note</span>}
         </div>
-        <Button variant="success" size="sm" onClick={() => setConfirmModal({ title: 'Select Applicant', message: `Mark ${app.students?.name} as Selected?`, action: () => updateStatus('selected'), variant: 'success', confirmLabel: 'Select' })}>
+        <Button variant="success" size="sm" onClick={() => setConfirmModal({ title: 'Select Applicant', message: `Mark ${studentName} as Selected?`, action: () => updateStatus('selected'), variant: 'success', confirmLabel: 'Select' })}>
           ✓ Select Applicant
         </Button>
-        <Button variant="danger" size="sm" onClick={() => setConfirmModal({ title: 'Reject Applicant', message: `Reject ${app.students?.name}? This will update their status.`, action: () => updateStatus('rejected_s3'), variant: 'danger', confirmLabel: 'Reject' })}>
+        <Button variant="danger" size="sm" onClick={() => setConfirmModal({ title: 'Reject Applicant', message: `Reject ${studentName}? This will update their status.`, action: () => updateStatus('rejected_s3'), variant: 'danger', confirmLabel: 'Reject' })}>
           ✗ Reject
         </Button>
         <Button variant="outline" size="sm" className="border-amber-200 text-amber-700 hover:bg-amber-50" onClick={() => setConfirmModal({ title: 'Flag for Review', message: 'Flag this applicant for human review?', action: () => { toast('Flagged for review.', { icon: '⚑' }); setConfirmModal(null); }, confirmLabel: 'Flag' })}>

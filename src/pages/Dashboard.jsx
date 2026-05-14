@@ -1,16 +1,70 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, animate } from 'framer-motion';
 import {
   CheckCircle, XCircle, Lock, ChevronDown, ChevronUp,
-  Clock, AlertTriangle, ArrowRight, BarChart2, Target, TrendingUp, RefreshCw
+  Clock, AlertTriangle, ArrowRight, BarChart2, Target, TrendingUp, RefreshCw, Download
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Button, Card, Badge, Skeleton, ProgressBar, STATUS_LABELS } from '../components/ui';
 import TopNav from '../components/layout/TopNav';
 import { format } from 'date-fns';
+import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
+
+// ── Download interview transcript as PDF ──────────────────────────────────
+function downloadTranscript(session, application) {
+  if (!session?.messages?.length) return;
+  const doc = new jsPDF();
+  const fd = application?.form_data || {};
+
+  // Header
+  doc.setFillColor(30, 58, 95);
+  doc.rect(0, 0, 210, 32, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('AI Interview Transcript', 20, 18);
+  doc.setFontSize(9);
+  doc.text(`${fd.name || 'Student'} · ${application?.branch || ''} · ${new Date().toLocaleDateString('en-IN')}`, 20, 26);
+
+  let y = 44;
+  const pageH = 280;
+  session.messages.forEach((msg) => {
+    const isAI = msg.role === 'assistant';
+    const label = isAI ? 'Dr. Mehta (AI)' : (fd.name || 'Student');
+    const text = (msg.content || '').replace(/\[INTERVIEW_COMPLETE\]|\[DONE\]/g, '').trim();
+    if (!text) return;
+
+    if (y > pageH - 30) { doc.addPage(); y = 20; }
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(isAI ? 30 : 100, isAI ? 58 : 100, isAI ? 95 : 100);
+    doc.text(label, 20, y);
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(10);
+    const lines = doc.splitTextToSize(text, 165);
+    lines.forEach(line => {
+      if (y > pageH) { doc.addPage(); y = 20; }
+      doc.text(line, 22, y);
+      y += 5;
+    });
+    y += 6;
+  });
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(160, 160, 160);
+  doc.text('Powered by Aria AI — DDS University Admissions', 20, 288);
+
+  doc.save(`Interview_Transcript_${fd.name?.replace(/\s+/g, '_') || 'student'}.pdf`);
+  toast.success('Transcript downloaded!');
+}
 
 // ── Retry countdown timer ──────────────────────────────────────────────────
 function RetryCountdown({ availableAt, onUnlock }) {
@@ -36,6 +90,33 @@ function RetryCountdown({ availableAt, onUnlock }) {
 }
 
 const fadeIn = { hidden: { opacity: 0, y: 16 }, visible: i => ({ opacity: 1, y: 0, transition: { delay: i * 0.1, duration: 0.3 } }) };
+
+// ── Animated Score Counter ────────────────────────────────────────────────
+function AnimatedScore({ value, suffix = '', duration = 1.5 }) {
+  const [display, setDisplay] = useState(0);
+  const nodeRef = useRef(null);
+
+  useEffect(() => {
+    if (value == null || isNaN(value)) return;
+    const controls = animate(0, Number(value), {
+      duration,
+      ease: [0.25, 0.46, 0.45, 0.94],
+      onUpdate: (v) => setDisplay(Math.round(v)),
+    });
+    return () => controls.stop();
+  }, [value, duration]);
+
+  return <span ref={nodeRef}>{display}{suffix}</span>;
+}
+
+function timeAgo(dateString) {
+  const diff = Date.now() - new Date(dateString).getTime();
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (hours < 1) return 'just now';
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  return `${days} day${days > 1 ? 's' : ''} ago`;
+}
 
 export default function Dashboard() {
   const { user, studentProfile } = useAuth();
@@ -187,11 +268,15 @@ export default function Dashboard() {
       <div className="max-w-3xl mx-auto px-4 py-10">
         {/* Header */}
         <motion.div custom={0} variants={fadeIn} initial="hidden" animate="visible" className="mb-8">
-          <h1 className="text-2xl font-bold text-navy">Welcome back, {name.split(' ')[0]} 👋</h1>
-          <p className="text-gray-500 mt-1">
-            Application to DDS University for Engineering — <span className="font-medium text-navy">{application.branch}</span>
-          </p>
-          <p className="text-xs text-gray-400 mt-1 font-mono">Application ID: {application.id.slice(0, 8).toUpperCase()}</p>
+          <div className="mb-6">
+            {studentProfile?.name
+              ? <h1 className="text-2xl font-semibold text-navy">Welcome back, {name.split(' ')[0]} 👋</h1>
+              : <div className="w-48 h-7 bg-gray-200 rounded-lg animate-pulse" />
+            }
+            <p className="text-sm text-gray-500 mt-1">
+              DDS University · {application.branch} · 2026 Admissions
+            </p>
+          </div>
         </motion.div>
 
         {/* Percentile comparison card (enhanced feature) */}
@@ -230,7 +315,7 @@ export default function Dashboard() {
               </div>
               {application.ai_score && (
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-navy">{Math.round(application.ai_score)}</p>
+                  <p className="text-3xl font-bold text-navy"><AnimatedScore value={Math.round(application.ai_score)} /></p>
                   <p className="text-xs text-gray-400">/ 100</p>
                 </div>
               )}
@@ -242,6 +327,11 @@ export default function Dashboard() {
                   <Badge variant={gradeColor(application.ai_grade)}>Grade: {application.ai_grade}</Badge>
                   <Badge variant="info">{STATUS_LABELS[application.status]}</Badge>
                 </div>
+                {application.created_at && (
+                  <p style={{fontSize: '11px', color: '#9ca3af', marginTop: '6px'}}>
+                    Reviewed {timeAgo(application.created_at)}
+                  </p>
+                )}
 
                 <button
                   onClick={() => setFeedbackOpen(!feedbackOpen)}
@@ -346,7 +436,7 @@ export default function Dashboard() {
               </div>
               {application.s2_best_score > 0 && (
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-navy">{Math.round(application.s2_best_score)}%</p>
+                  <p className="text-3xl font-bold text-navy"><AnimatedScore value={Math.round(application.s2_best_score)} suffix="%" /></p>
                   <p className="text-xs text-gray-400">best score</p>
                 </div>
               )}
@@ -358,16 +448,17 @@ export default function Dashboard() {
             {/* STATE: ready (0 attempts) */}
             {stage2Ready && (
               <div className="mt-4 space-y-3">
-                <div className="grid grid-cols-3 gap-2 text-xs text-center">
-                  {[['Maths','7 Qs'],['Physics','5 Qs'],['Chemistry','3 Qs']].map(([sub,count]) => (
-                    <div key={sub} className="bg-gray-50 border border-border rounded-lg p-2">
-                      <p className="font-semibold text-navy">{sub}</p><p className="text-gray-500">{count}</p>
-                    </div>
+                <div className="flex flex-wrap gap-2">
+                  {[['Physics','4'],['Chemistry','3'],['Maths','4'],['English','2'],['Reasoning','2']].map(([sub,count]) => (
+                    <span key={sub} className="px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-medium text-gray-600 border border-gray-200">
+                      {sub} · {count} Qs
+                    </span>
                   ))}
                 </div>
+                <p className="text-xs text-gray-400">15 questions total</p>
                 <p className="text-xs text-gray-500 flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                  Camera required · Do not switch tabs · 2 attempts available
+                  Proctored test · 2 attempts available
                 </p>
                 <Link to="/test"><Button variant="primary" className="w-full">Begin Aptitude Test →</Button></Link>
               </div>
@@ -458,13 +549,18 @@ export default function Dashboard() {
               </div>
               {application.s3_best_score > 0 && (
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-navy">{Math.round(application.s3_best_score)}</p>
+                  <p className="text-3xl font-bold text-navy"><AnimatedScore value={Math.round(application.s3_best_score)} /></p>
                   <p className="text-xs text-gray-400">/ 100 best</p>
                 </div>
               )}
             </div>
 
-            {stage3Locked && <p className="text-sm text-gray-400 mt-3">Unlocks after you pass Stage 2.</p>}
+            {stage3Locked && (
+              <div className="mt-3">
+                <p className="text-sm text-gray-400">Unlocks after you pass Stage 2.</p>
+                <p style={{fontSize: '12px', color: '#9ca3af', marginTop: '4px'}}>~15 minute AI interview · Personalized to your application</p>
+              </div>
+            )}
 
             {/* Ready for first attempt */}
             {!stage3Locked && !stage3Done && !stage3Fail1 && !stage3BothFail && (
@@ -521,6 +617,14 @@ export default function Dashboard() {
                   {stage3Selected ? '🎉 Selected!' : 'Interview Submitted'}
                 </Badge>
                 <p className="text-sm text-gray-600">DDS University admissions team is reviewing your full assessment. You will hear back within 5-7 business days.</p>
+                {interviewSession?.messages?.length > 0 && (
+                  <button
+                    onClick={() => downloadTranscript(interviewSession, application)}
+                    className="mt-2 flex items-center gap-2 text-sm font-medium text-navy hover:text-blue-700 transition-colors"
+                  >
+                    <Download className="w-4 h-4" /> Download Interview Transcript
+                  </button>
+                )}
               </div>
             )}
           </Card>

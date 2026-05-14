@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Filter, Download, AlertTriangle, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Search, Filter, Download, AlertTriangle, ChevronUp, ChevronDown, X, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Badge, Button, Skeleton, BRANCHES } from '../../components/ui';
 import AdminLayout from './AdminLayout';
@@ -49,7 +49,7 @@ export default function Applicants() {
     if (search.trim()) {
       const q = search.toLowerCase();
       data = data.filter(a =>
-        a.students?.name?.toLowerCase().includes(q) ||
+        (a.students?.name || a.form_data?.name || '').toLowerCase().includes(q) ||
         a.students?.email?.toLowerCase().includes(q)
       );
     }
@@ -64,7 +64,7 @@ export default function Applicants() {
       let aVal, bVal;
       if (sort.field === 'ai_score') { aVal = a.ai_score || 0; bVal = b.ai_score || 0; }
       else if (sort.field === 'jee') { aVal = +(a.form_data?.jee || 0); bVal = +(b.form_data?.jee || 0); }
-      else if (sort.field === 'name') { aVal = a.students?.name || ''; bVal = b.students?.name || ''; }
+      else if (sort.field === 'name') { aVal = a.students?.name || a.form_data?.name || ''; bVal = b.students?.name || b.form_data?.name || ''; }
       else { aVal = a.created_at; bVal = b.created_at; }
       return sort.dir === 'asc'
         ? (typeof aVal === 'string' ? aVal.localeCompare(bVal) : aVal - bVal)
@@ -76,12 +76,54 @@ export default function Applicants() {
   }, [applications, search, statusFilter, branchFilter, flagFilter, sort]);
 
   const fetchApplications = async () => {
-    const { data } = await supabase
-      .from('applications')
-      .select('*, students(name, email, city), test_sessions(score, correct, ai_flag, tab_switches), s2_attempts, s3_attempts, s2_best_score, s3_best_score')
-      .order('created_at', { ascending: false });
-    setApplications(data || []);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from('applications')
+        .select(`
+          id,
+          branch,
+          status,
+          stage,
+          ai_score,
+          ai_grade,
+          ai_feedback,
+          s2_attempts,
+          s3_attempts,
+          s2_best_score,
+          s3_best_score,
+          created_at,
+          form_data,
+          student_id,
+          students (
+            id,
+            name,
+            email,
+            phone,
+            city
+          ),
+          test_sessions (
+            score,
+            correct,
+            ai_flag,
+            tab_switches
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Applicants fetch error:', error);
+        throw error;
+      }
+
+      console.log('Fetched applicants:', data);
+      console.log('First applicant students join:', data?.[0]?.students);
+      setApplications(data || []);
+    } catch (err) {
+      console.error('Failed to fetch applicants:', err);
+      setApplications([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleSort = (field) => {
@@ -95,7 +137,7 @@ export default function Applicants() {
       const avg = fd.physics && fd.chemistry && fd.maths ? ((+fd.physics + +fd.chemistry + +fd.maths) / 3).toFixed(1) : '';
       const ts = a.test_sessions?.[0];
       return [
-        a.students?.name, a.students?.email, a.students?.city, a.branch,
+        a.students?.name || a.form_data?.name, a.students?.email, a.students?.city || a.form_data?.city, a.branch,
         avg, fd.jee, a.ai_score, a.ai_grade, ts?.score ? Math.round(ts.score) + '%' : '',
         a.status, new Date(a.created_at).toLocaleDateString(),
       ].map(v => `"${v || ''}"`).join(',');
@@ -228,8 +270,8 @@ export default function Applicants() {
                   >
                     <td className="px-4 py-3 text-xs text-gray-400 font-mono">{rowIdx}</td>
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{app.students?.name || '—'}</p>
-                      <p className="text-xs text-gray-500">{app.students?.city}</p>
+                      <p className="text-sm font-medium text-gray-900">{app.students?.name || app.form_data?.name || '—'}</p>
+                      <p className="text-xs text-gray-500">{app.students?.city || app.form_data?.city}</p>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs font-medium text-navy bg-navy/5 rounded px-2 py-0.5">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, LayoutDashboard, FileText, LogOut, ChevronRight } from 'lucide-react';
+import { Menu, X, LayoutDashboard, FileText, User, LogOut, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 /**
@@ -36,6 +36,7 @@ export default function TopNav({ subtitle = 'Admissions Portal', rightSlot, show
   const navLinks = showUserMenu ? [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/apply', label: 'Application', icon: FileText },
+    { to: '/profile', label: 'My Profile', icon: User },
   ] : [];
 
   return (
@@ -54,7 +55,7 @@ export default function TopNav({ subtitle = 'Admissions Portal', rightSlot, show
           {rightSlot}
           {showUserMenu && (
             <>
-              <span className="text-sm text-gray-500 max-w-[140px] truncate">{name}</span>
+              <Link to="/profile" className="text-sm text-gray-500 max-w-[140px] truncate hover:text-navy transition-colors">{name}</Link>
               <button
                 onClick={handleSignOut}
                 className="text-sm font-medium text-gray-500 hover:text-red-500 border border-border rounded-lg px-3 py-1.5 transition-colors"

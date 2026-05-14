@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { Card, Badge, Skeleton } from '../../components/ui';
 import AdminLayout from './AdminLayout';
 import { formatDistanceToNow } from 'date-fns';
+import { calculateAdmissionStats, calculateFlagCount } from '../../utils/statsHelpers';
 
 const fadeIn = { hidden: { opacity: 0, y: 16 }, visible: i => ({ opacity: 1, y: 0, transition: { delay: i * 0.07, duration: 0.3 } }) };
 
@@ -35,48 +36,58 @@ export default function AdminDashboard() {
     try {
       const { data: apps } = await supabase
         .from('applications')
-        .select('*, students(name, email, city), test_sessions(ai_flag), interview_sessions(ai_flags)')
+        .select('*, students(name, email, city), test_sessions(ai_flag, tab_switches, face_warning_count, force_terminated, integrity_log), interview_sessions(ai_flags)')
         .order('created_at', { ascending: false });
 
       if (!apps) return;
+      console.log('Dashboard raw apps:', apps);
 
-      const total = apps.length;
-      const s1passed = apps.filter(a => ['passed_s1', 'passed_s2', 'rejected_s2', 'interview', 'selected'].includes(a.status)).length;
-      const s2passed = apps.filter(a => ['passed_s2', 'interview', 'selected'].includes(a.status)).length;
-      const interviews = apps.filter(a => ['interview', 'selected'].includes(a.status)).length;
-      const selected = apps.filter(a => a.status === 'selected').length;
-      const flagged = apps.filter(a => a.test_sessions?.some(ts => ts.ai_flag)).length;
+      // Use shared stats calculator for consistency with Analytics
+      const admStats = calculateAdmissionStats(apps);
 
-      setStats({ total, s1passed, s2passed, interviews, selected, flagged });
+      // Calculate AI flags from test sessions
+      const allSessions = apps.flatMap(a => a.test_sessions || []);
+      const flagged = calculateFlagCount(allSessions);
+
+      setStats({
+        total: admStats.total,
+        s1passed: admStats.s1Passed,
+        s2passed: admStats.s2Passed,
+        interviews: admStats.interviews,
+        selected: admStats.selected,
+        flagged,
+      });
+      console.log('Dashboard stats:', { ...admStats, flagged });
 
       // Branch distribution
       const branchMap = {};
       apps.forEach(a => {
-        if (!branchMap[a.branch]) branchMap[a.branch] = { name: a.branch.split(' ')[0], total: 0, passed: 0 };
+        if (!branchMap[a.branch]) branchMap[a.branch] = { name: a.branch?.split(' ')[0] || 'Unknown', total: 0, passed: 0 };
         branchMap[a.branch].total++;
-        if (['passed_s1', 'passed_s2', 'interview', 'selected'].includes(a.status)) branchMap[a.branch].passed++;
+        if (!['pending', 'rejected_s1'].includes(a.status)) branchMap[a.branch].passed++;
       });
       setBranchData(Object.values(branchMap).sort((a, b) => b.total - a.total));
 
       // Funnel
       setFunnelData([
-        { stage: 'Applied', count: total },
-        { stage: 'S1 Pass', count: s1passed },
-        { stage: 'S2 Pass', count: s2passed },
-        { stage: 'Interview', count: interviews },
-        { stage: 'Selected', count: selected },
+        { stage: 'Applied', count: admStats.total },
+        { stage: 'S1 Pass', count: admStats.s1Passed },
+        { stage: 'S2 Pass', count: admStats.s2Passed },
+        { stage: 'Interview', count: admStats.interviews },
+        { stage: 'Selected', count: admStats.selected },
       ]);
 
-      // Recent activity
+      // Recent activity — uses the students join, falls back to form_data
       setRecentActivity(apps.slice(0, 8).map(a => ({
         id: a.id,
-        name: a.students?.name || 'Unknown',
-        branch: a.branch?.split(' ')[0],
+        name: a.students?.name || a.form_data?.name || 'Unknown',
+        branch: a.branch?.split(' ')[0] || a.form_data?.branch?.split(' ')[0] || 'Unknown',
         status: a.status,
         time: a.created_at,
       })));
+      console.log('Recent activity:', apps.slice(0, 3).map(a => ({ name: a.students?.name, formName: a.form_data?.name, email: a.students?.email })));
     } catch (err) {
-      console.error(err);
+      console.error('Dashboard fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -104,7 +115,7 @@ export default function AdminDashboard() {
     <AdminLayout>
       <div className="mb-6">
         <h1 className="text-section-head text-navy">Admissions Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">DDS University for Engineering · 2025 Cycle · Live Data</p>
+        <p className="text-gray-500 text-sm mt-1">DDS University for Engineering · 2026 Cycle · Live Data</p>
       </div>
 
       {/* Stats row */}

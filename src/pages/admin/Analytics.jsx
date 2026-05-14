@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer,
   ScatterChart, Scatter, XAxis, YAxis, Tooltip, CartesianGrid,
-  BarChart, Bar, Cell, Legend
+  BarChart, Bar, Cell, Legend, PieChart, Pie, LineChart, Line
 } from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { Card, Badge, Skeleton } from '../../components/ui';
 import AdminLayout from './AdminLayout';
+import { calculateAdmissionStats } from '../../utils/statsHelpers';
 
 export default function Analytics() {
   const [data, setData] = useState(null);
@@ -21,13 +22,11 @@ export default function Analytics() {
       .order('created_at', { ascending: false });
 
     if (!apps) { setLoading(false); return; }
+    console.log('Analytics raw apps:', apps);
 
-    // Conversion rates
-    const total = apps.length;
-    const s1 = apps.filter(a => !['pending', 'rejected_s1'].includes(a.status)).length;
-    const s2 = apps.filter(a => ['passed_s2', 'interview', 'selected'].includes(a.status)).length;
-    const s3 = apps.filter(a => ['interview', 'selected'].includes(a.status)).length;
-    const sel = apps.filter(a => a.status === 'selected').length;
+    // Use shared stats calculator for consistency with Dashboard
+    const admStats = calculateAdmissionStats(apps);
+    const { total, s1Passed: s1, s2Passed: s2, interviews: s3, selected: sel } = admStats;
 
     // Score distribution buckets
     const scoreBuckets = Array.from({ length: 10 }, (_, i) => ({ range: `${i * 10}–${i * 10 + 9}`, count: 0 }));
@@ -76,7 +75,42 @@ export default function Analytics() {
     });
     const tabData = Object.entries(tabMap).map(([switches, count]) => ({ switches, count }));
 
-    setData({ total, s1, s2, s3, sel, scoreBuckets, cityData, flagged, testCount, branchConv, scatter, tabData });
+    // ── NEW: Applications by Branch (full name) ──
+    const branchFullMap = {};
+    apps.forEach(a => {
+      const b = a.branch || 'Unknown';
+      if (!branchFullMap[b]) branchFullMap[b] = 0;
+      branchFullMap[b]++;
+    });
+    const branchAppData = Object.entries(branchFullMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([branch, count]) => ({ branch: branch.length > 18 ? branch.slice(0, 16) + '...' : branch, count, fullName: branch }));
+
+    // ── NEW: Average Scores per Stage ──
+    const s1Scores = apps.filter(a => a.ai_score).map(a => a.ai_score);
+    const s2Scores = apps.filter(a => a.test_sessions?.length > 0 && a.test_sessions[0]?.score).map(a => a.test_sessions[0].score);
+    const s3Scores = apps.filter(a => a.s3_best_score).map(a => a.s3_best_score);
+    const avg = arr => arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 0;
+    const avgScores = [
+      { stage: 'Stage 1', avg: avg(s1Scores), min: s1Scores.length ? Math.round(Math.min(...s1Scores)) : 0, max: s1Scores.length ? Math.round(Math.max(...s1Scores)) : 0, count: s1Scores.length },
+      { stage: 'Stage 2', avg: avg(s2Scores), min: s2Scores.length ? Math.round(Math.min(...s2Scores)) : 0, max: s2Scores.length ? Math.round(Math.max(...s2Scores)) : 0, count: s2Scores.length },
+      { stage: 'Stage 3', avg: avg(s3Scores), min: s3Scores.length ? Math.round(Math.min(...s3Scores)) : 0, max: s3Scores.length ? Math.round(Math.max(...s3Scores)) : 0, count: s3Scores.length },
+    ];
+
+    // ── NEW: Pass/Fail Rates per Stage ──
+    const s1Total = apps.filter(a => a.ai_score || a.status?.includes('s1')).length;
+    const s1Pass = apps.filter(a => ['passed_s1', 'passed_s2', 'passed_s3', 'selected', 's3_attempt1_failed'].some(s => a.status?.includes(s) || a.stage >= 2)).length;
+    const s2Total = apps.filter(a => a.test_sessions?.length > 0).length;
+    const s2Pass = apps.filter(a => a.stage >= 3 || a.status === 'passed_s2' || a.status === 'passed_s3' || a.status === 'selected').length;
+    const s3Total = apps.filter(a => a.s3_best_score > 0).length;
+    const s3Pass = apps.filter(a => a.status === 'passed_s3' || a.status === 'selected').length;
+    const passFailData = [
+      { stage: 'Stage 1', passed: s1Pass, failed: Math.max(0, s1Total - s1Pass), rate: s1Total ? Math.round(s1Pass / s1Total * 100) : 0 },
+      { stage: 'Stage 2', passed: s2Pass, failed: Math.max(0, s2Total - s2Pass), rate: s2Total ? Math.round(s2Pass / s2Total * 100) : 0 },
+      { stage: 'Stage 3', passed: s3Pass, failed: Math.max(0, s3Total - s3Pass), rate: s3Total ? Math.round(s3Pass / s3Total * 100) : 0 },
+    ];
+
+    setData({ total, s1, s2, s3, sel, scoreBuckets, cityData, flagged, testCount, branchConv, scatter, tabData, branchAppData, avgScores, passFailData });
     setLoading(false);
   };
 
@@ -113,7 +147,7 @@ export default function Analytics() {
     <AdminLayout>
       <div className="mb-6">
         <h1 className="text-section-head text-navy">Analytics</h1>
-        <p className="text-gray-500 text-sm mt-1">DDS University · 2025 Admissions Cycle</p>
+        <p className="text-gray-500 text-sm mt-1">DDS University · 2026 Admissions Cycle</p>
       </div>
 
       {/* KPI row */}
@@ -242,6 +276,70 @@ export default function Analytics() {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        </Card>
+
+        {/* ── NEW: Applications by Branch ── */}
+        <Card>
+          <p className="text-card-title font-semibold text-navy mb-4">Applications by Branch</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={data.branchAppData} barSize={24} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 10 }} />
+              <YAxis dataKey="branch" type="category" tick={{ fontSize: 10 }} width={100} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} formatter={(v, n, p) => [v, p.payload.fullName]} />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                {(data.branchAppData || []).map((d, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* ── NEW: Average Scores per Stage ── */}
+        <Card>
+          <p className="text-card-title font-semibold text-navy mb-4">Average Scores per Stage</p>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {data.avgScores.map((s, i) => (
+              <div key={s.stage} className="bg-gray-50 rounded-xl p-3 text-center">
+                <p className="text-2xl font-bold text-navy">{s.avg}</p>
+                <p className="text-xs text-gray-500 mt-1">{s.stage}</p>
+                <p className="text-[10px] text-gray-400">{s.count} scores · {s.min}–{s.max}</p>
+              </div>
+            ))}
+          </div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={data.avgScores} barSize={32}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <Bar dataKey="avg" name="Average" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="max" name="Max" fill="#c8960a" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* ── NEW: Pass/Fail Rates ── */}
+        <Card>
+          <p className="text-card-title font-semibold text-navy mb-4">Pass / Fail Rates per Stage</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data.passFailData} barSize={28}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 10 }} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="passed" name="Passed" stackId="a" fill="#065f46" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="failed" name="Failed" stackId="a" fill="#dc2626" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            {data.passFailData.map(s => (
+              <div key={s.stage} className="text-center">
+                <p className={`text-lg font-bold ${s.rate >= 60 ? 'text-green-600' : s.rate >= 40 ? 'text-amber-600' : 'text-red-600'}`}>{s.rate}%</p>
+                <p className="text-xs text-gray-500">{s.stage} pass rate</p>
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
     </AdminLayout>

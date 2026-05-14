@@ -106,8 +106,16 @@ export default function AdminLogin() {
             <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">
               Admin Login
             </Button>
+            <p className="text-center" style={{marginTop:'10px'}}>
+              <a href="mailto:aria@ddsuniversity.ac.in"
+                style={{fontSize:'13px',color:'#6b7280',textDecoration:'none'}}
+                onMouseEnter={e=>e.currentTarget.style.color='#1e3a5f'}
+                onMouseLeave={e=>e.currentTarget.style.color='#6b7280'}
+              >
+                Forgot password? Contact your system administrator
+              </a>
+            </p>
           </form>
-
 
         </Card>
 

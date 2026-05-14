@@ -42,6 +42,7 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(getRLLeft);
   const [notConfirmed, setNotConfirmed] = useState(false);
+  const [resetMsg, setResetMsg] = useState('');
   const timerRef = useRef(null);
 
   // Tick cooldown down
@@ -220,7 +221,7 @@ export default function Auth() {
             <span className="text-white font-bold text-xl">DDS</span>
           </div>
           <h1 className="text-xl font-bold text-navy">DDS University for Engineering</h1>
-          <p className="text-sm text-gray-500 mt-1">2025 Admissions · Powered by Aria</p>
+          <p className="text-sm text-gray-500 mt-1">Admissions Portal</p>
         </div>
 
         {/* Banners */}
@@ -305,6 +306,20 @@ export default function Auth() {
                   <Button type="submit" variant="primary" size="lg" loading={loading} disabled={disabled} className="w-full">
                     {cooldown > 0 ? `Wait ${cooldown}s` : 'Log In'}
                   </Button>
+                  {resetMsg && (
+                    <p className="text-center text-xs mt-1" style={{color: resetMsg.startsWith('Password') ? '#16a34a' : '#dc2626'}}>{resetMsg}</p>
+                  )}
+                  <p className="text-center" style={{marginTop:'6px'}}>
+                    <button type="button" style={{fontSize:'13px',color:'#6b7280',background:'none',border:'none',cursor:'pointer'}}
+                      onMouseEnter={e=>e.currentTarget.style.color='#1e3a5f'}
+                      onMouseLeave={e=>e.currentTarget.style.color='#6b7280'}
+                      onClick={async () => {
+                        if (!email.trim()) { setResetMsg('Please enter your email address first'); return; }
+                        await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin + '/reset-password' });
+                        setResetMsg('Password reset email sent. Check your inbox.');
+                      }}
+                    >Forgot your password? Reset it →</button>
+                  </p>
                   <p className="text-center text-xs text-gray-500">
                     No account?{' '}
                     <button type="button" onClick={() => setTab('signup')} className="text-navy font-semibold hover:underline">Sign up →</button>
