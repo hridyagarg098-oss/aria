@@ -1,114 +1,87 @@
-# Aria — AI Admissions Platform
-### DDS University for Engineering · 2025
+Aria: AI-Powered Admission Platform
+Aria is a comprehensive, three-stage admission ecosystem designed to automate, secure, and personalize the university enrollment process. It replaces traditional, manual evaluations with an intelligent pipeline consisting of data-driven applications, automated aptitude testing, and generative AI interviews.
+
+🚀 Live Demo
+https://aria-dds-university.netlify.app
+
+
+🛠 Tech Stack
+ React, Tailwind CSS, Supabase, Groq API with Claude as fallback, face-api.js for proctoring.
+
+Hosting: Netlify
+
+🌟 Key Features
+1. Three-Stage Admission Pipeline
+Stage 1: Smart Application: Captures academic history, extracurriculars, and project portfolios.
+
+Stage 2: Dynamic Aptitude: A customizable testing engine with adjustable difficulty and timing.
+
+Stage 3: AI Interviewer: A "Context-Aware" AI that reads the student's bio and conducts a unique 1-on-1 interview.
+
+2. The Evaluation Engine (8 Dimensions)
+The AI evaluates candidates across eight specific human and technical metrics:
+
+Confidence & Motivation
+
+Self-Awareness
+
+Subject Matter Expertise
+
+Project Authenticity (Verifying if the student actually built what they claimed)
+
+future vision 
+
+case study thinking 
+
+3. Advanced Anti-Cheating Suite
+Face Monitoring: Real-time tracking to ensure the applicant remains present.
+
+Tab-Switch Detection: Immediate flagging if the user attempts to search for answers.
+
+Full-Screen Enforcement: Disqualifies users who exit the dedicated exam environment.
+
+4. Secure Admin Dashboard
+Data Visualization: Charts and analytics for student distribution across stages.
+
+Granular Filtering: Admins can sort by branch, score, or application status.
+
+Automated Feedback: Students receive instant, constructive feedback upon decision finalization.
+
+🔒 Security & Architecture
+Aria is built with a "Security First" approach:
+
+PostgreSQL Row-Level Security (RLS): Policies are enforced at the database level so students can only access their own data, preventing unauthorized API access.
+
+Atomic Transactions: Ensures data integrity during the multi-stage transition.
+
+📸 Screenshots
+(Pro-tip: Add 2-3 screenshots of your Admin Panel and the AI Interview interface here. It makes the README look 10x better!)
+
+🛠 Installation & Setup
+Clone the repository:
+
+Bash
+git clone https://github.com/hridyagarg098-oss/aria.git
+Install dependencies:
+
+Bash
+npm install
+Environment Variables:
+Create a .env file and add your Supabase and AI credentials:
+
+Code snippet
+    VITE_SUPABASE_URL=your_url
+    VITE_SUPABASE_ANON_KEY=your_key
+    VITE_AI_API_KEY=your_key
+    ```
+4.  **Run locally:**
+    ```bash
+    npm run dev
+    ```
 
 ---
 
-## ✅ Build Complete
-
-The full-stack platform is running at **http://localhost:5173**
-
----
-
-## 🗄️ STEP 1 — Initialize Database (Supabase SQL Editor)
-
-1. Open [Supabase Dashboard](https://supabase.com/dashboard/project/arlxnjafyospxjbjkpey/sql)  
-2. Paste and run the entire contents of **`schema.sql`**  
-3. This creates all 7 tables + RLS policies + seeds DDS University + 15 aptitude questions
+## 💡 Why Aria?
+Aria was built to solve the "Human Bottleneck" in education. By providing instant feedback and reducing manpower costs, it creates a "win-win" for both universities and students, ensuring that talent is identified through logic and innovation rather than just marks.
 
 ---
-
-## 👤 STEP 2 — Create Admin Account
-
-1. In Supabase Dashboard → **Authentication → Users → Invite User**
-2. Email: `admin@dds.edu` | Password: `DDSAdmin2025`
-3. Copy the generated User ID (UUID)
-4. In SQL Editor, run:
-
-```sql
-insert into admins (id, university_id, name, email)
-select 'PASTE-USER-ID-HERE', id, 'DDS Admin', 'admin@dds.edu'
-from universities where slug = 'dds-university';
-```
-
----
-
-## 🔑 STEP 3 — Add Your Groq API Key
-
-Edit `.env.local`:
-```
-VITE_GROQ_API_KEY=gsk_your_actual_key_here
-```
-
-Get your free key at [console.groq.com](https://console.groq.com) → API Keys
-
----
-
-## 🧪 STEP 4 — Test the Full Flow
-
-| Path | Description |
-|------|-------------|
-| `/` | Landing page + eligibility checker |
-| `/auth` | Student magic link login |
-| `/apply` | 3-step application form |
-| `/dashboard` | Student pipeline dashboard |
-| `/test` | Anti-cheat aptitude test |
-| `/interview` | AI streaming interview |
-| `/admin` | Admin login (admin@dds.edu) |
-| `/admin/dashboard` | Realtime stats + charts |
-| `/admin/applicants` | Filterable applicant table |
-| `/admin/applicant/:id` | Full detail with action bar |
-| `/admin/analytics` | Funnel, radar, scatter charts |
-| `/admin/test-builder` | Edit aptitude questions |
-
----
-
-## 🏗️ Architecture Overview
-
-```
-src/
-├── pages/
-│   ├── Landing.jsx          ← Hero + eligibility checker
-│   ├── Auth.jsx             ← Magic link auth
-│   ├── Apply.jsx            ← 3-step form + AI scoring
-│   ├── Dashboard.jsx        ← Student pipeline view
-│   ├── AptitudeTest.jsx     ← Anti-cheat test (fullscreen)
-│   ├── Interview.jsx        ← AI streaming interview
-│   └── admin/
-│       ├── AdminLogin.jsx
-│       ├── AdminDashboard.jsx
-│       ├── Applicants.jsx
-│       ├── ApplicantDetail.jsx
-│       ├── Analytics.jsx
-│       └── TestBuilder.jsx
-├── components/
-│   ├── ui/index.jsx         ← Button, Card, Badge, Input...
-│   └── layout/
-│       └── ProtectedRoute.jsx
-├── contexts/
-│   └── AuthContext.jsx      ← Student + Admin auth
-├── lib/
-│   └── supabase.js
-└── utils/
-    └── ai.js               ← Groq streaming + prompts
-```
-
----
-
-## 🔒 Anti-Cheat Mechanisms
-
-- ✅ Fullscreen lock (exits → forced back in)
-- ✅ Tab visibility detection (3 strikes = auto-submit)
-- ✅ Right-click & copy-paste disabled
-- ✅ DevTools keypress detection
-- ✅ Camera presence monitoring
-- ✅ AI cheating probability score (Groq analysis)
-- ✅ Human review always required before disqualification
-
----
-
-## 🤖 AI Pipeline
-
-1. **Stage 1** — Application scoring via Groq (llama-3.3-70b)  
-2. **Stage 2** — Cheat detection analysis  
-3. **Stage 3** — Streaming interview (personalized to application)  
-4. **Stage 3 end** — Automatic interview scoring (communication, depth, enthusiasm)
