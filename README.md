@@ -54,8 +54,6 @@ PostgreSQL Row-Level Security (RLS): Policies are enforced at the database level
 
 Atomic Transactions: Ensures data integrity during the multi-stage transition.
 
-📸 Screenshots
-(Pro-tip: Add 2-3 screenshots of your Admin Panel and the AI Interview interface here. It makes the README look 10x better!)
 
 🛠 Installation & Setup
 Clone the repository:
